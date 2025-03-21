@@ -4,6 +4,14 @@ const cors = require('cors')
 const nodemailer = require('nodemailer')
 
 const app = express()
+const corsOptions = {
+  origin: [
+    'https://landing-page-gohealth.vercel.app',
+    'http://localhost:3000'
+  ],
+  methods: ['POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+};
 app.use(cors())
 app.use(express.json())
 
