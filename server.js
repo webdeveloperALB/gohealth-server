@@ -12,8 +12,9 @@ const corsOptions = {
   methods: ['POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 };
-app.use(cors())
-app.use(express.json())
+app.use(cors(corsOptions)); // ← Now using the options
+app.options('*', cors(corsOptions)); // ← Add this for preflight
+app.use(express.json());
 
 const transporter = nodemailer.createTransport({
   host: 'gohealthalbania.com',
