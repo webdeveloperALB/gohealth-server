@@ -2,6 +2,7 @@ require('dotenv').config()
 const express = require('express')
 const cors = require('cors')
 const nodemailer = require('nodemailer')
+const axios = require('axios')
 
 const app = express()
 const corsOptions = {
@@ -12,8 +13,8 @@ const corsOptions = {
   methods: ['POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 };
-app.use(cors(corsOptions)); // ← Now using the options
-app.options('*', cors(corsOptions)); // ← Add this for preflight
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 app.use(express.json());
 
 const transporter = nodemailer.createTransport({
@@ -25,6 +26,27 @@ const transporter = nodemailer.createTransport({
     pass: process.env.EMAIL_PASS
   }
 })
+
+// reCAPTCHA verification function
+async function verifyCaptcha(token) {
+  try {
+    const response = await axios.post(
+      'https://www.google.com/recaptcha/api/siteverify',
+      null,
+      {
+        params: {
+          secret: process.env.RECAPTCHA_SECRET_KEY || '6LfefxorAAAAAKT56qOeHMjJklSz5SWaehdsEAzF',
+          response: token
+        }
+      }
+    );
+    
+    return response.data.success;
+  } catch (error) {
+    console.error('reCAPTCHA verification error:', error);
+    return false;
+  }
+}
 
 app.post('/send-email', async (req, res) => {
   try {
@@ -45,8 +67,21 @@ app.post('/send-email', async (req, res) => {
       mobile = '',
       address = '',
       branch = '',
-      message = ''
-    } = req.body
+      message = '',
+      
+      // reCAPTCHA token
+      recaptchaToken
+    } = req.body;
+
+    // Verify reCAPTCHA
+    if (!recaptchaToken) {
+      return res.status(400).json({ message: 'reCAPTCHA token is required' });
+    }
+
+    const isCaptchaValid = await verifyCaptcha(recaptchaToken);
+    if (!isCaptchaValid) {
+      return res.status(400).json({ message: 'reCAPTCHA verification failed' });
+    }
 
     const mailOptions = {
       from: `"Website Form" <${process.env.EMAIL_USER}>`,
@@ -83,7 +118,7 @@ app.post('/send-email', async (req, res) => {
   }
 })
 
-const PORT = process.env.PORT || 3001
+const PORT = process.env.PORT || 5000
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`)
 })
