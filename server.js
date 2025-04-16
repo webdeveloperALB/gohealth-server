@@ -27,23 +27,33 @@ const transporter = nodemailer.createTransport({
   }
 })
 
-// reCAPTCHA verification function
+// Improved reCAPTCHA verification function with better error handling
 async function verifyCaptcha(token) {
   try {
+    // Form data for reCAPTCHA verification
+    const params = new URLSearchParams();
+    params.append('secret', process.env.RECAPTCHA_SECRET_KEY || '6LfefxorAAAAAKT56qOeHMjJklSz5SWaehdsEAzF');
+    params.append('response', token);
+    
     const response = await axios.post(
       'https://www.google.com/recaptcha/api/siteverify',
-      null,
+      params.toString(),
       {
-        params: {
-          secret: process.env.RECAPTCHA_SECRET_KEY || '6LfefxorAAAAAKT56qOeHMjJklSz5SWaehdsEAzF',
-          response: token
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
         }
       }
     );
     
-    return response.data.success;
+    if (response.data.success) {
+      console.log('reCAPTCHA verification successful');
+      return true;
+    } else {
+      console.error('reCAPTCHA verification failed:', response.data['error-codes']);
+      return false;
+    }
   } catch (error) {
-    console.error('reCAPTCHA verification error:', error);
+    console.error('reCAPTCHA verification error:', error.message);
     return false;
   }
 }
@@ -80,8 +90,12 @@ app.post('/send-email', async (req, res) => {
 
     const isCaptchaValid = await verifyCaptcha(recaptchaToken);
     if (!isCaptchaValid) {
-      return res.status(400).json({ message: 'reCAPTCHA verification failed' });
+      return res.status(400).json({ message: 'reCAPTCHA verification failed. Please try again.' });
     }
+
+    // Format date and time if they exist
+    const formattedDate = date ? new Date(date).toLocaleDateString('it-IT') : '';
+    const formattedTime = time ? new Date(time).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) : '';
 
     const mailOptions = {
       from: `"Website Form" <${process.env.EMAIL_USER}>`,
@@ -98,10 +112,10 @@ app.post('/send-email', async (req, res) => {
         ` : name ? `<p><strong>Nome:</strong> ${name}</p>` : ''}
         
         ${email ? `<p><strong>Email:</strong> ${email}</p>` : ''}
-        ${date ? `<p><strong>Data:</strong> ${new Date(date).toLocaleDateString('it-IT')}</p>` : ''}
-        ${time ? `<p><strong>Ora:</strong> ${new Date(time).toLocaleTimeString('it-IT')}</p>` : ''}
+        ${formattedDate ? `<p><strong>Data:</strong> ${formattedDate}</p>` : ''}
+        ${formattedTime ? `<p><strong>Ora:</strong> ${formattedTime}</p>` : ''}
         
-        <!-- New fields -->
+        <!-- Additional fields -->
         ${age ? `<p><strong>Età:</strong> ${age}</p>` : ''}
         ${mobile ? `<p><strong>Telefono:</strong> ${mobile}</p>` : ''}
         ${address ? `<p><strong>Indirizzo:</strong> ${address}</p>` : ''}
@@ -116,6 +130,11 @@ app.post('/send-email', async (req, res) => {
     console.error('Error sending email:', error)
     res.status(500).json({ message: 'Errore durante l\'invio dell\'email' })
   }
+})
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok' })
 })
 
 const PORT = process.env.PORT || 5000
