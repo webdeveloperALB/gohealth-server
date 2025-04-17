@@ -9,7 +9,7 @@ const app = express();
 // Updated CORS configuration
 const corsOptions = {
   origin: [
-    "https://lp.gohealthalbania.com/",
+    "https://lp.gohealthalbania.com",
     "http://localhost:3000",
     // Add any other domains that need access here
   ],
