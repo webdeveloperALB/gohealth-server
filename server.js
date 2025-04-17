@@ -1,6 +1,4 @@
 require("dotenv").config();
-// Replace or update your server.js CORS configuration:
-
 const express = require("express");
 const cors = require("cors");
 const nodemailer = require("nodemailer");
@@ -11,7 +9,7 @@ const app = express();
 // Updated CORS configuration
 const corsOptions = {
   origin: [
-    "https://landing-page-gohealth.vercel.app",
+    "https://lp.gohealthalbania.com/",
     "http://localhost:3000",
     // Add any other domains that need access here
   ],
