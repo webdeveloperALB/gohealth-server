@@ -6,28 +6,36 @@ const axios = require("axios");
 
 const app = express();
 
-// Updated CORS configuration
-const corsOptions = {
-  origin: [
-    "https://lp.gohealthalbania.com",
-    "http://localhost:3000",
-    // Add any other domains that need access here
-  ],
+// Improved CORS configuration
+const allowedOrigins = [
+  "https://lp.gohealthalbania.com",
+  "http://localhost:3000",
+  // Add any other domains that need access here
+];
+
+// Apply CORS middleware with more explicit configuration
+app.use(cors({
+  origin: function(origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   methods: ["GET", "POST", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
-  credentials: true, // Allow cookies if needed
+  credentials: true,
   preflightContinue: false,
-  optionsSuccessStatus: 204,
-};
+  optionsSuccessStatus: 204
+}));
 
-// Apply CORS middleware
-app.use(cors(corsOptions));
-
-// Handle OPTIONS requests explicitly
-app.options("*", cors(corsOptions));
+// Make sure OPTIONS requests are handled correctly
+app.options('*', cors());
 
 app.use(express.json());
-
 
 const transporter = nodemailer.createTransport({
   host: "gohealthalbania.com",
@@ -178,6 +186,15 @@ app.post("/send-email", async (req, res) => {
     console.error("Error sending email:", error);
     res.status(500).json({ message: "Errore durante l'invio dell'email" });
   }
+});
+
+// Add explicit headers to all responses (backup solution)
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', 'https://lp.gohealthalbania.com');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.header('Access-Control-Allow-Credentials', true);
+  next();
 });
 
 // Health check endpoint
