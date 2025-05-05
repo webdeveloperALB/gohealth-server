@@ -98,9 +98,19 @@ app.post("/send-email", async (req, res) => {
       branch = "",
       message = "",
 
+      // Honeypot field
+      website = "",
+
       // reCAPTCHA token
       recaptchaToken,
     } = req.body;
+
+    // Check honeypot - if filled, silently return success but don't send email
+    if (website !== "") {
+      console.log("Spam submission detected via honeypot! Request blocked.");
+      // Return 200 to fool the bot into thinking submission was successful
+      return res.status(200).json({ message: "Email inviata con successo!" });
+    }
 
     // Verify reCAPTCHA
     if (!recaptchaToken) {
