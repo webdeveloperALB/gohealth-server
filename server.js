@@ -102,6 +102,7 @@ app.post("/send-email", async (req, res) => {
       lastName = "",
       age = "",
       mobile = "",
+      phone = "", // Added phone field
       address = "",
       branch = "",
       message = "",
@@ -143,6 +144,9 @@ app.post("/send-email", async (req, res) => {
         })
       : "";
 
+    // Prefer the phone field, but fall back to mobile if it exists
+    const contactPhone = phone || mobile || "";
+
     const mailOptions = {
       from: `"Website Form" <${process.env.EMAIL_USER}>`,
       to: "clinic@gohealthalbania.com",
@@ -168,12 +172,12 @@ app.post("/send-email", async (req, res) => {
         }
         
         ${email ? `<p><strong>Email:</strong> ${email}</p>` : ""}
+        ${contactPhone ? `<p><strong>Telefono:</strong> ${contactPhone}</p>` : ""}
         ${formattedDate ? `<p><strong>Data:</strong> ${formattedDate}</p>` : ""}
         ${formattedTime ? `<p><strong>Ora:</strong> ${formattedTime}</p>` : ""}
         
         <!-- Additional fields -->
         ${age ? `<p><strong>Età:</strong> ${age}</p>` : ""}
-        ${mobile ? `<p><strong>Telefono:</strong> ${mobile}</p>` : ""}
         ${address ? `<p><strong>Indirizzo:</strong> ${address}</p>` : ""}
         ${branch ? `<p><strong>Filiale:</strong> ${branch}</p>` : ""}
         ${message ? `<p><strong>Messaggio:</strong> ${message}</p>` : ""}
