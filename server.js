@@ -97,12 +97,12 @@ app.post("/send-email", async (req, res) => {
       department = "",
       treatment = "",
 
-      // New fields
+      // Contact fields - now with dedicated phone field
       firstName = "",
       lastName = "",
       age = "",
       mobile = "",
-      phone = "", // Added phone field
+      phone = "", // Dedicated phone field
       address = "",
       branch = "",
       message = "",
@@ -144,9 +144,7 @@ app.post("/send-email", async (req, res) => {
         })
       : "";
 
-    // Prefer the phone field, but fall back to mobile if it exists
-    const contactPhone = phone || mobile || "";
-
+    // Contact information handling - now with separate phone and mobile
     const mailOptions = {
       from: `"Website Form" <${process.env.EMAIL_USER}>`,
       to: "clinic@gohealthalbania.com",
@@ -172,7 +170,8 @@ app.post("/send-email", async (req, res) => {
         }
         
         ${email ? `<p><strong>Email:</strong> ${email}</p>` : ""}
-        ${contactPhone ? `<p><strong>Telefono:</strong> ${contactPhone}</p>` : ""}
+        ${phone ? `<p><strong>Telefono:</strong> ${phone}</p>` : ""}
+        ${mobile ? `<p><strong>Cellulare:</strong> ${mobile}</p>` : ""}
         ${formattedDate ? `<p><strong>Data:</strong> ${formattedDate}</p>` : ""}
         ${formattedTime ? `<p><strong>Ora:</strong> ${formattedTime}</p>` : ""}
         
