@@ -1,20 +1,22 @@
-require("dotenv").config();
-const express = require("express");
-const cors = require("cors");
-const nodemailer = require("nodemailer");
-const axios = require("axios");
-const { google } = require("googleapis");
+import express from 'express';
+import cors from 'cors';
+import nodemailer from 'nodemailer';
+import { google } from 'googleapis';
+import dotenv from 'dotenv';
+import axios from 'axios';
+
+// Load environment variables
+dotenv.config();
 
 const app = express();
 
 // Improved CORS configuration
 const allowedOrigins = [
-  "https://lp.gohealthalbania.com",
-  "http://localhost:3000",
-  // Add any other domains that need access here
+  'https://lp.gohealthalbania.com',
+  'http://localhost:3000',
+  // Add any other domains that need access
 ];
 
-// Apply CORS middleware with more explicit configuration
 app.use(cors({
   origin: function(origin, callback) {
     // Allow requests with no origin (like mobile apps or curl requests)
@@ -26,14 +28,14 @@ app.use(cors({
       callback(new Error('Not allowed by CORS'));
     }
   },
-  methods: ["GET", "POST", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
   preflightContinue: false,
   optionsSuccessStatus: 204
 }));
 
-// Make sure OPTIONS requests are handled correctly
+// Handle OPTIONS requests
 app.options('*', cors());
 
 app.use(express.json());
@@ -50,52 +52,62 @@ const transporter = nodemailer.createTransport({
 });
 
 // Google Sheets API Configuration
-// Load the service account credentials
 const SCOPES = ['https://www.googleapis.com/auth/spreadsheets'];
-const GOOGLE_PRIVATE_KEY = process.env.GOOGLE_PRIVATE_KEY || "-----BEGIN PRIVATE KEY-----\nMIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQDDweCBvtsLTkNy\nJk00gf2UONRydEziED7a9bretrZaYMHay9pTaL+syu46hm5Meg1vAKcf0ezrjpYO\nz+TfWQ3M3uHcch9M7aZtve9UpXYkn3f2hjH+g0zJ7CYNFIREgO8VmJqJ1o7EhSWl\njHh2g0es16QANCPvJ7OzkI6PGfCywwBsAt0AC1yGfNm384WwxdKec73XCOPGfELg\n15KeWYLxHAj0vLZG6Xi073ZFsBhHry3/rD8pNRy26pdebWoNeBA1PsjPxMnNh1Jk\n5ZEJHJvtSBo5BPJHCGKvisFVei5/IQytlfUH7RAO4IPhyVnkfDjPI+Xxl2tTYXep\nCBXH832/AgMBAAECggEANIS6xURdgvJ70M+qzegEDrSSdqRyDgJawqbDfEXbtXKY\n/6jKSa9kISkOceAoDld+bCXqMHTDEc1ev9mRp0Q+mhS/1sM9V4e4q1+WKoj7ocaw\nyhBlsEksnE3BRagX9kL7Ibmf2FQaWGn6WChQF0eQPrRZ2P4kF+D4arfhL04/z81d\n6tt0yAMqS4heFYYKwAVoyGZl2nOKnv06bSiwlSPHXMdaanvyRn4sTgOt97uCIaRW\nBvj2TdcY+8rmTZoX9ykKPa0FWSR+CMvnG8lf8US5MJr7tqPXyJJ0qoWzLH9ymDyK\nRIYjRTBQrhO1hY5KtopuQolIMeec4aq8w2JuuGmxfQKBgQDs/MN2IIPMqsRZA7tk\n8Ab4hX8ZqZdfJVwRa6pWHiPv+3MlPrJmDScaWg2gH2pyeeprTQICCizXWPPT6Hmd\nR49abl4EbexXqadArkoy7rV0/xiGwv56WBEavieeHBSe2RDdZcgwihbyQRgeZcZ8\nz40u2amFQ0+K9ZBBtHsqB/LjfQKBgQDTdlU5pKhAdcjFkvSLRb+IJlGrFqEqFogu\nc+apK92Ye/jSGI/jwyXD0CuAtLC86l1h73XMEPRMHCIFCeW2UWZ+qDffHoA3phBW\nNS8VAL700yy12YyCIklFlaPJwgDmUj88LCBxG/4OZMrxZskX2Ry3YB1HMN8gzCD6\ndiy4zpty6wKBgGFwY+Vz5P0H0YdP84LC9frE2MdyZVynfb1j6TtTVS9c0bEkoDE5\ngzRghm2pvRioa+wGU6cHC/zXBBnC4g362EQ0UM+9aol4pd4AS125rD4YjLsL/ZnM\nD+xQ9vUZUpklYrvFF5RtkpW0kfgdnIjAxanXsM2sKU5XPSLm1CUp84H5AoGAH+D/\nCCmik9Ut51s4MqbZMRVVyo0mzsmGzjn61BYg2hQWdtXtG1EYKGUBqe2Tl2ddnJ4V\nDCaiLbcwCcJsNwgeg4mooqJeggUvAVATQP9TymTroJ6jaBrzIOJmRsxQhmhv0Ap2\n+ZZWvqTDU5FDT60TfzGmOE1N1gvwDNIz+8hp9vECgYB/xpQr0H8F41hEPxgTwR8Y\nrTtDZoSK90uT52oBiwYT0eLLhBZNOQNUbyehJJPDS0QsvTc1QELS92WLCsYHvDs3\nqqHELBR79IqSkOKGXL8cF5e7eLsngfWI1/yTxUmILCmV8DZSVfZWh45Jox2i0wh0\nYeGv1UTIf8pSz2+Y9aWxkg==\n-----END PRIVATE KEY-----\n";
-const GOOGLE_CLIENT_EMAIL = process.env.GOOGLE_CLIENT_EMAIL || "landing-page-gohealth-albania@gohealth-landingpage.iam.gserviceaccount.com";
-const GOOGLE_PROJECT_ID = process.env.GOOGLE_PROJECT_ID || "gohealth-landingpage";
 
-// Google Sheets document configuration
-const SPREADSHEET_ID = process.env.SPREADSHEET_ID || "YOUR_SPREADSHEET_ID"; // Replace with your actual spreadsheet ID
-const SHEET_NAME = process.env.SHEET_NAME || "FormSubmissions";
-
-// Setup Google Auth
+// Create auth client from environment variables
 const auth = new google.auth.JWT(
-  GOOGLE_CLIENT_EMAIL,
+  process.env.GOOGLE_CLIENT_EMAIL,
   null,
-  GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+  // Replace escaped newlines in the private key
+  process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
   SCOPES
 );
 
 // Create Google sheets instance
 const sheets = google.sheets({ version: 'v4', auth });
 
-// Function to append data to Google Sheet
-async function appendToSheet(data) {
+// Function to append data to Google Sheet - now handles both form types
+async function appendToSheet(data, formType) {
   try {
-    const formattedDate = data.date ? new Date(data.date).toLocaleDateString("it-IT") : "";
-    const formattedTime = data.time ? new Date(data.time).toLocaleTimeString("it-IT", {
-      hour: "2-digit",
-      minute: "2-digit",
-    }) : "";
+    const formattedDate = data.date || data.selectedDate 
+      ? new Date(data.date || data.selectedDate).toLocaleDateString("it-IT") 
+      : "";
+      
+    const formattedTime = data.time || data.selectedTime
+      ? new Date(data.time || data.selectedTime).toLocaleTimeString("it-IT", {
+          hour: "2-digit",
+          minute: "2-digit",
+        }) 
+      : "";
+    
+    // Determine the full name based on available fields
+    let fullName = '';
+    if (data.name) {
+      fullName = data.name;
+    } else if (data.firstName || data.lastName) {
+      fullName = `${data.firstName || ''} ${data.lastName || ''}`.trim();
+    }
 
-    // Format data for sheets - adjust columns as needed
+    // Format data for sheets - unified structure for both forms
     const values = [
       [
-        new Date().toISOString(), // Timestamp of submission
-        data.name || `${data.firstName || ''} ${data.lastName || ''}`.trim(),
-        data.email || '',
-        data.phone || data.mobile || '',
-        data.department || '',
-        data.treatment || '',
-        data.service || '',
-        formattedDate,
-        formattedTime,
-        data.age || '',
-        data.address || '',
-        data.branch || '',
-        data.message || ''
+        new Date().toISOString(),                // Timestamp
+        formType,                                // Form Type (DENTAL or CHECKUP)
+        fullName,                                // Full Name
+        data.firstName || '',                    // First Name
+        data.lastName || '',                     // Last Name
+        data.email || '',                        // Email
+        data.phone || '',                        // Phone
+        data.mobile || '',                       // Mobile
+        data.department || '',                   // Department
+        data.treatment || '',                    // Treatment
+        data.service || '',                      // Service
+        formattedDate,                           // Date
+        formattedTime,                           // Time
+        data.age || '',                          // Age
+        data.address || '',                      // Address
+        data.branch || '',                       // Branch
+        data.message || ''                       // Message
       ]
     ];
 
@@ -105,8 +117,8 @@ async function appendToSheet(data) {
 
     // Append data to the sheet
     const result = await sheets.spreadsheets.values.append({
-      spreadsheetId: SPREADSHEET_ID,
-      range: `${SHEET_NAME}!A:M`, // Adjust range based on your columns
+      spreadsheetId: process.env.SPREADSHEET_ID,
+      range: `${process.env.SHEET_NAME}!A:Q`, // Expanded range to include all columns
       valueInputOption: 'RAW',
       resource,
     });
@@ -125,11 +137,7 @@ async function verifyCaptcha(token) {
   try {
     // Form data for reCAPTCHA verification
     const params = new URLSearchParams();
-    params.append(
-      "secret",
-      process.env.RECAPTCHA_SECRET_KEY ||
-        "6LfefxorAAAAAKT56qOeHMjJklSz5SWaehdsEAzF"
-    );
+    params.append("secret", process.env.RECAPTCHA_SECRET_KEY);
     params.append("response", token);
 
     const response = await axios.post(
@@ -158,33 +166,35 @@ async function verifyCaptcha(token) {
   }
 }
 
+// Unified endpoint for both forms
 app.post("/send-email", async (req, res) => {
   try {
+    // Extract all possible fields from both forms
     const {
-      // Existing fields
-      name,
+      // Common fields
       email,
       service,
+      recaptchaToken,
+      website = "", // Honeypot field
+      
+      // Dental form specific fields
+      name,
+      phone,
       date,
       time,
       department = "",
       treatment = "",
-
-      // Contact fields - now with dedicated phone field
+      
+      // Checkup form specific fields
       firstName = "",
       lastName = "",
       age = "",
       mobile = "",
-      phone = "", // Dedicated phone field
       address = "",
       branch = "",
       message = "",
-
-      // Honeypot field
-      website = "",
-
-      // reCAPTCHA token
-      recaptchaToken,
+      selectedDate,
+      selectedTime
     } = req.body;
 
     // Check honeypot - if filled, silently return success but don't send email
@@ -205,42 +215,44 @@ app.post("/send-email", async (req, res) => {
         .status(400)
         .json({ message: "reCAPTCHA verification failed. Please try again." });
     }
-
-    // Format date and time if they exist
-    const formattedDate = date
-      ? new Date(date).toLocaleDateString("it-IT")
+    
+    // Determine which form was submitted
+    // If firstName or lastName is present, it's likely the checkup form
+    // If department or treatment is present, it's likely the dental form
+    const formType = (firstName || lastName) ? "CHECKUP" : "DENTAL";
+    
+    // Format date and time based on which form fields are present
+    const formattedDate = date || selectedDate
+      ? new Date(date || selectedDate).toLocaleDateString("it-IT")
       : "";
-    const formattedTime = time
-      ? new Date(time).toLocaleTimeString("it-IT", {
+      
+    const formattedTime = time || selectedTime
+      ? new Date(time || selectedTime).toLocaleTimeString("it-IT", {
           hour: "2-digit",
           minute: "2-digit",
         })
       : "";
+    
+    // Determine the full name based on available fields
+    let fullName = '';
+    if (name) {
+      fullName = name;
+    } else if (firstName || lastName) {
+      fullName = `${firstName || ''} ${lastName || ''}`.trim();
+    }
 
-    // Contact information handling - now with separate phone and mobile
+    // Contact information handling - unified for both forms
     const mailOptions = {
       from: `"Website Form" <${process.env.EMAIL_USER}>`,
       to: "clinic@gohealthalbania.com",
-      subject: "Nuova Prenotazione",
+      subject: `Nuova Prenotazione - ${formType}`,
       html: `
-        <h3>Nuova Prenotazione</h3>
+        <h3>Nuova Prenotazione - ${formType}</h3>
         ${department ? `<p><strong>Reparto:</strong> ${department}</p>` : ""}
         ${treatment ? `<p><strong>Trattamento:</strong> ${treatment}</p>` : ""}
-        ${
-          service
-            ? `<p><strong>Servizio Richiesto:</strong> ${service}</p>`
-            : ""
-        }
+        ${service ? `<p><strong>Servizio Richiesto:</strong> ${service}</p>` : ""}
         
-        ${
-          firstName || lastName
-            ? `
-          <p><strong>Nome:</strong> ${firstName} ${lastName}</p>
-        `
-            : name
-            ? `<p><strong>Nome:</strong> ${name}</p>`
-            : ""
-        }
+        <p><strong>Nome:</strong> ${fullName}</p>
         
         ${email ? `<p><strong>Email:</strong> ${email}</p>` : ""}
         ${phone ? `<p><strong>Telefono:</strong> ${phone}</p>` : ""}
@@ -256,14 +268,17 @@ app.post("/send-email", async (req, res) => {
       `,
     };
 
-    // Store data in Google Sheets - don't await to not block email sending
+    // Store data in Google Sheets
     const formData = {
-      name: name || `${firstName || ''} ${lastName || ''}`.trim(),
+      name,
+      firstName,
+      lastName,
       email,
-      phone: phone || mobile,
+      phone,
+      mobile,
       service,
-      date,
-      time,
+      date: date || selectedDate,
+      time: time || selectedTime,
       department,
       treatment,
       age,
@@ -273,13 +288,25 @@ app.post("/send-email", async (req, res) => {
     };
     
     // Save to Google Sheets in parallel with email sending
-    appendToSheet(formData).catch(error => {
-      console.error("Failed to save to Google Sheets:", error);
-      // Continue with email sending even if Google Sheets fails
-    });
+    const sheetPromise = appendToSheet(formData, formType);
+    const emailPromise = transporter.sendMail(mailOptions);
+    
+    // Wait for both operations to complete
+    const [sheetResult, emailResult] = await Promise.allSettled([sheetPromise, emailPromise]);
+    
+    // Log any errors but don't fail the request if only one operation fails
+    if (sheetResult.status === 'rejected') {
+      console.error("Failed to save to Google Sheets:", sheetResult.reason);
+    }
+    
+    if (emailResult.status === 'rejected') {
+      console.error("Failed to send email:", emailResult.reason);
+      // Only fail the request if both operations fail
+      if (sheetResult.status === 'rejected') {
+        throw new Error("Both email and sheet operations failed");
+      }
+    }
 
-    // Send email notification
-    await transporter.sendMail(mailOptions);
     res.status(200).json({ message: "Email inviata con successo!" });
   } catch (error) {
     console.error("Error processing request:", error);
@@ -287,47 +314,63 @@ app.post("/send-email", async (req, res) => {
   }
 });
 
-// Add explicit headers to all responses (backup solution)
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', 'https://lp.gohealthalbania.com');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  res.header('Access-Control-Allow-Credentials', true);
-  next();
-});
-
 // Health check endpoint
 app.get("/health", (req, res) => {
   res.status(200).json({ status: "ok" });
 });
 
-// Endpoint to manually initialize and test the Google Sheets connection
+// Endpoint to manually test the Google Sheets connection
 app.get("/test-sheets-connection", async (req, res) => {
   try {
-    // Test data
-    const testData = {
-      name: "Test User",
-      email: "test@example.com",
-      phone: "+1234567890",
-      service: "Test Service",
-      date: new Date().toISOString(),
-      time: new Date().toISOString(),
-      department: "Test Department",
-      treatment: "Test Treatment"
-    };
+    // Test data for both form types
+    const testData = [
+      {
+        formType: "DENTAL",
+        data: {
+          name: "Test Dental Patient",
+          email: "dental@example.com",
+          phone: "+1234567890",
+          service: "Dental Cleaning",
+          date: new Date().toISOString(),
+          time: new Date().toISOString(),
+          department: "Dental Oral Care",
+          treatment: "Impainti Dentali"
+        }
+      },
+      {
+        formType: "CHECKUP",
+        data: {
+          firstName: "Test",
+          lastName: "Checkup Patient",
+          email: "checkup@example.com",
+          phone: "+0987654321",
+          mobile: "+1122334455",
+          service: "General Checkup",
+          selectedDate: new Date().toISOString(),
+          selectedTime: new Date().toISOString(),
+          age: "45",
+          address: "123 Test Street",
+          branch: "Tirana",
+          message: "This is a test message"
+        }
+      }
+    ];
     
-    // Attempt to append to sheet
-    const result = await appendToSheet(testData);
+    // Test both form types
+    const results = await Promise.all([
+      appendToSheet(testData[0].data, testData[0].formType),
+      appendToSheet(testData[1].data, testData[1].formType)
+    ]);
     
-    if (result) {
+    if (results.every(result => result)) {
       res.status(200).json({ 
         status: "success", 
-        message: "Successfully connected to Google Sheets and appended test data" 
+        message: "Successfully connected to Google Sheets and appended test data for both form types" 
       });
     } else {
       res.status(500).json({ 
         status: "error", 
-        message: "Failed to append data to Google Sheets. Check server logs for details." 
+        message: "Failed to append some test data to Google Sheets. Check server logs for details." 
       });
     }
   } catch (error) {
