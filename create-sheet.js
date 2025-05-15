@@ -19,30 +19,34 @@ const sheets = google.sheets({ version: 'v4', auth });
 
 async function setupSheet() {
   try {
-    // First, check if the spreadsheet exists
-    const spreadsheetId = process.env.SPREADSHEET_ID;
+    let spreadsheetId;
     
-    // If you don't have a spreadsheet yet, uncomment this to create one:
-    /*
-    const createResponse = await sheets.spreadsheets.create({
-      resource: {
-        properties: {
-          title: 'Go Health Form Submissions',
-        },
-        sheets: [
-          {
-            properties: {
-              title: 'FormSubmissions',
+    // Check if we should use an existing spreadsheet or create a new one
+    if (process.env.SPREADSHEET_ID) {
+      // Use existing spreadsheet
+      spreadsheetId = process.env.SPREADSHEET_ID;
+      console.log(`Using existing spreadsheet with ID: ${spreadsheetId}`);
+    } else {
+      // Create a new spreadsheet
+      const createResponse = await sheets.spreadsheets.create({
+        resource: {
+          properties: {
+            title: 'Go Health Form Submissions',
+          },
+          sheets: [
+            {
+              properties: {
+                title: 'FormSubmissions',
+              }
             }
-          }
-        ]
-      }
-    });
-    
-    const spreadsheetId = createResponse.data.spreadsheetId;
-    console.log(`Created new spreadsheet with ID: ${spreadsheetId}`);
-    console.log(`Make sure to update your SPREADSHEET_ID env variable to: ${spreadsheetId}`);
-    */
+          ]
+        }
+      });
+      
+      spreadsheetId = createResponse.data.spreadsheetId;
+      console.log(`Created new spreadsheet with ID: ${spreadsheetId}`);
+      console.log(`Make sure to update your SPREADSHEET_ID env variable to: ${spreadsheetId}`);
+    }
     
     // Define the column headers for our unified form
     const headers = [
@@ -176,9 +180,11 @@ async function setupSheet() {
     });
     
     console.log('✅ Test row added successfully!');
+    console.log('✅ Google Sheet setup complete!');
+    console.log(`📊 View your spreadsheet at: https://docs.google.com/spreadsheets/d/${spreadsheetId}`);
     
   } catch (error) {
-    console.error('Error setting up sheet:', error);
+    console.error('❌ Error setting up sheet:', error);
     if (error.response) {
       console.error('Response error data:', error.response.data);
     }
@@ -189,6 +195,7 @@ async function setupSheet() {
 auth.authorize((err) => {
   if (err) {
     console.error('❌ Authentication failed:', err);
+    console.error('Error details:', err.message);
   } else {
     console.log('✅ Authentication successful!');
     setupSheet();
