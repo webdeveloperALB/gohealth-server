@@ -1,9 +1,10 @@
-import express from 'express';
-import cors from 'cors';
-import nodemailer from 'nodemailer';
-import { google } from 'googleapis';
-import dotenv from 'dotenv';
-import axios from 'axios';
+const express = require('express');
+const cors = require('cors');
+const nodemailer = require('nodemailer');
+const { google } = require('googleapis');
+const dotenv = require('dotenv');
+const axios = require('axios');
+const fs = require('fs');
 
 // Load environment variables
 dotenv.config();
@@ -54,14 +55,54 @@ const transporter = nodemailer.createTransport({
 // Google Sheets API Configuration
 const SCOPES = ['https://www.googleapis.com/auth/spreadsheets'];
 
-// Create auth client from environment variables
-const auth = new google.auth.JWT(
-  process.env.GOOGLE_CLIENT_EMAIL,
-  null,
-  // Replace escaped newlines in the private key
-  process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-  SCOPES
-);
+// IMPORTANT: Properly handle the private key for Render deployment
+// The key needs special handling because of how environment variables work in Render
+function getPrivateKey() {
+  const key = process.env.GOOGLE_PRIVATE_KEY;
+  
+  // If the key already contains newlines, return it as is
+  if (key && key.includes('-----BEGIN PRIVATE KEY-----')) {
+    return key.replace(/\\n/g, '\n');
+  }
+  
+  // Otherwise, try to reconstruct it from the environment variable
+  // This handles cases where the key is stored without proper formatting
+  return `-----BEGIN PRIVATE KEY-----\n${key}\n-----END PRIVATE KEY-----`;
+}
+
+// Try to use service account from secret file first, then fall back to env vars
+let auth;
+try {
+  const secretPath = '/etc/secrets/service-account.json';
+  if (fs.existsSync(secretPath)) {
+    const credentials = JSON.parse(fs.readFileSync(secretPath, 'utf8'));
+    auth = new google.auth.JWT(
+      credentials.client_email,
+      null,
+      credentials.private_key,
+      SCOPES
+    );
+    console.log("Using service account from secret file");
+  } else {
+    // Fall back to environment variables
+    auth = new google.auth.JWT(
+      process.env.GOOGLE_CLIENT_EMAIL,
+      null,
+      getPrivateKey(),
+      SCOPES
+    );
+    console.log("Using service account from environment variables");
+  }
+} catch (error) {
+  console.error("Error setting up authentication:", error);
+  // Create a basic auth object anyway to avoid null references
+  auth = new google.auth.JWT(
+    process.env.GOOGLE_CLIENT_EMAIL,
+    null,
+    getPrivateKey(),
+    SCOPES
+  );
+}
 
 // Create Google sheets instance
 const sheets = google.sheets({ version: 'v4', auth });
@@ -69,6 +110,8 @@ const sheets = google.sheets({ version: 'v4', auth });
 // Function to append data to Google Sheet - now handles both form types
 async function appendToSheet(data, formType) {
   try {
+    console.log("Attempting to append data to Google Sheet...");
+    
     const formattedDate = data.date || data.selectedDate 
       ? new Date(data.date || data.selectedDate).toLocaleDateString("it-IT") 
       : "";
@@ -92,7 +135,7 @@ async function appendToSheet(data, formType) {
     const values = [
       [
         new Date().toISOString(),                // Timestamp
-        formType,                                // Form Type (DENTAL or CHECKUP)
+        formType || "UNKNOWN",                   // Form Type (DENTAL or CHECKUP)
         fullName,                                // Full Name
         data.firstName || '',                    // First Name
         data.lastName || '',                     // Last Name
@@ -115,10 +158,12 @@ async function appendToSheet(data, formType) {
       values,
     };
 
+    console.log(`Attempting to append to spreadsheet: ${process.env.SPREADSHEET_ID}`);
+    
     // Append data to the sheet
     const result = await sheets.spreadsheets.values.append({
       spreadsheetId: process.env.SPREADSHEET_ID,
-      range: `${process.env.SHEET_NAME}!A:Q`, // Expanded range to include all columns
+      range: `${process.env.SHEET_NAME || "FormSubmissions"}!A:Q`, // Expanded range to include all columns
       valueInputOption: 'RAW',
       resource,
     });
@@ -169,6 +214,8 @@ async function verifyCaptcha(token) {
 // Unified endpoint for both forms
 app.post("/send-email", async (req, res) => {
   try {
+    console.log("Received form submission");
+    
     // Extract all possible fields from both forms
     const {
       // Common fields
@@ -220,6 +267,7 @@ app.post("/send-email", async (req, res) => {
     // If firstName or lastName is present, it's likely the checkup form
     // If department or treatment is present, it's likely the dental form
     const formType = (firstName || lastName) ? "CHECKUP" : "DENTAL";
+    console.log(`Form type detected: ${formType}`);
     
     // Format date and time based on which form fields are present
     const formattedDate = date || selectedDate
@@ -287,12 +335,13 @@ app.post("/send-email", async (req, res) => {
       message
     };
     
-    // Save to Google Sheets in parallel with email sending
-    const sheetPromise = appendToSheet(formData, formType);
-    const emailPromise = transporter.sendMail(mailOptions);
+    console.log("Attempting to save data and send email...");
     
-    // Wait for both operations to complete
-    const [sheetResult, emailResult] = await Promise.allSettled([sheetPromise, emailPromise]);
+    // Save to Google Sheets in parallel with email sending
+    const [sheetResult, emailResult] = await Promise.allSettled([
+      appendToSheet(formData, formType),
+      transporter.sendMail(mailOptions)
+    ]);
     
     // Log any errors but don't fail the request if only one operation fails
     if (sheetResult.status === 'rejected') {
@@ -316,61 +365,49 @@ app.post("/send-email", async (req, res) => {
 
 // Health check endpoint
 app.get("/health", (req, res) => {
-  res.status(200).json({ status: "ok" });
+  res.status(200).json({ 
+    status: "ok",
+    environment: process.env.NODE_ENV || 'development',
+    googleAuth: auth ? "configured" : "not configured",
+    emailTransport: transporter ? "configured" : "not configured"
+  });
 });
 
 // Endpoint to manually test the Google Sheets connection
 app.get("/test-sheets-connection", async (req, res) => {
   try {
-    // Test data for both form types
-    const testData = [
-      {
-        formType: "DENTAL",
-        data: {
-          name: "Test Dental Patient",
-          email: "dental@example.com",
-          phone: "+1234567890",
-          service: "Dental Cleaning",
-          date: new Date().toISOString(),
-          time: new Date().toISOString(),
-          department: "Dental Oral Care",
-          treatment: "Impainti Dentali"
-        }
-      },
-      {
-        formType: "CHECKUP",
-        data: {
-          firstName: "Test",
-          lastName: "Checkup Patient",
-          email: "checkup@example.com",
-          phone: "+0987654321",
-          mobile: "+1122334455",
-          service: "General Checkup",
-          selectedDate: new Date().toISOString(),
-          selectedTime: new Date().toISOString(),
-          age: "45",
-          address: "123 Test Street",
-          branch: "Tirana",
-          message: "This is a test message"
-        }
-      }
-    ];
+    console.log("Testing Google Sheets connection...");
+    console.log(`Using client email: ${process.env.GOOGLE_CLIENT_EMAIL}`);
+    console.log(`Spreadsheet ID: ${process.env.SPREADSHEET_ID}`);
     
-    // Test both form types
-    const results = await Promise.all([
-      appendToSheet(testData[0].data, testData[0].formType),
-      appendToSheet(testData[1].data, testData[1].formType)
-    ]);
+    // Test authentication first
+    await auth.authorize();
+    console.log("✅ Google authentication successful");
     
-    if (results.every(result => result)) {
+    // Test data
+    const testData = {
+      name: "Test User",
+      email: "test@example.com",
+      phone: "+1234567890",
+      service: "Test Service",
+      date: new Date().toISOString(),
+      time: new Date().toISOString(),
+      department: "Test Department",
+      treatment: "Test Treatment"
+    };
+    
+    // Attempt to append to sheet
+    const result = await appendToSheet(testData, "TEST");
+    
+    if (result) {
       res.status(200).json({ 
         status: "success", 
-        message: "Successfully connected to Google Sheets and appended test data for both form types" 
+        message: "Successfully connected to Google Sheets and appended test data" 
       });
     } else {
       res.status(500).json({ 
         status: "error", 
-        message: "Failed to append some test data to Google Sheets. Check server logs for details." 
+        message: "Failed to append data to Google Sheets. Check server logs for details." 
       });
     }
   } catch (error) {
@@ -378,7 +415,8 @@ app.get("/test-sheets-connection", async (req, res) => {
     res.status(500).json({ 
       status: "error", 
       message: "Failed to connect to Google Sheets", 
-      error: error.message 
+      error: error.message,
+      stack: error.stack
     });
   }
 });
@@ -388,11 +426,13 @@ app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   
   // Initialize Google Sheets connection
-  auth.authorize((err) => {
-    if (err) {
-      console.error("Error authenticating with Google:", err);
-    } else {
-      console.log("Successfully connected to Google Sheets API");
-    }
-  });
+  auth.authorize()
+    .then(() => {
+      console.log("✅ Successfully connected to Google Sheets API");
+    })
+    .catch((err) => {
+      console.error("❌ Error authenticating with Google:", err);
+    });
 });
+
+module.exports = app;
