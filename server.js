@@ -6,7 +6,6 @@ const axios = require("axios");
 const fs = require("fs");
 const path = require("path");
 const { createObjectCsvWriter } = require("csv-writer");
-const basicAuth = require("express-basic-auth");
 const moment = require("moment");
 
 // Load environment variables
@@ -98,6 +97,7 @@ const checkupCsvWriter = createObjectCsvWriter({
     { id: 'lastName', title: 'Last Name' },
     { id: 'email', title: 'Email' },
     { id: 'mobile', title: 'Mobile' },
+    { id: 'phone', title: 'Phone' },
     { id: 'age', title: 'Age' },
     { id: 'address', title: 'Address' },
     { id: 'branch', title: 'Branch' },
@@ -183,13 +183,14 @@ async function saveToCSV(formData, formType) {
         lastName: formData.lastName || '',
         email: formData.email || '',
         mobile: formData.mobile || '',
+        phone: formData.phone || '', // Added phone field
         age: formData.age || '',
         address: formData.address || '',
         branch: formData.branch || '',
         service: formData.service || '',
         appointmentDate: formData.selectedDate ? moment(formData.selectedDate).format('YYYY-MM-DD') : '',
         appointmentTime: formData.selectedTime ? moment(formData.selectedTime, 'HH:mm').format('HH:mm') : '',
-        message: formData.message || ''
+        message: formData.message || '' // Ensure message is properly saved
       };
     }
     
@@ -261,7 +262,7 @@ app.post("/send-email", async (req, res) => {
       mobile = "",
       address = "",
       branch = "",
-      message = "",
+      message = "", // Ensure message is extracted
       selectedDate,
       selectedTime,
     } = req.body;
@@ -350,13 +351,14 @@ app.post("/send-email", async (req, res) => {
       lastName,
       email,
       mobile,
+      phone, // Include phone field for checkup form
       age,
       address,
       branch,
       service,
       selectedDate,
       selectedTime,
-      message
+      message // Ensure message is included
     };
 
     console.log("Attempting to save data and send email...");
@@ -400,7 +402,47 @@ app.get("/health", (req, res) => {
   });
 });
 
-// Basic authentication middleware for admin routes
+// Basic authentication middleware for admin routes - using custom implementation instead of express-basic-auth
+function basicAuth(options) {
+  const users = options.users || {};
+  const challenge = options.challenge || false;
+  const realm = options.realm || 'Authentication Required';
+
+  return function(req, res, next) {
+    // Parse the Authorization header
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader) {
+      return unauthorized();
+    }
+    
+    // Get the encoded credentials
+    const match = authHeader.match(/^Basic\s+(.*)$/);
+    if (!match) {
+      return unauthorized();
+    }
+    
+    // Decode the credentials
+    const credentials = Buffer.from(match[1], 'base64').toString();
+    const [username, password] = credentials.split(':');
+    
+    // Check if the credentials are valid
+    if (users[username] && users[username] === password) {
+      return next();
+    }
+    
+    return unauthorized();
+    
+    function unauthorized() {
+      if (challenge) {
+        res.setHeader('WWW-Authenticate', `Basic realm="${realm}"`);
+      }
+      res.status(401).send('Unauthorized');
+    }
+  };
+}
+
+// Admin authentication middleware
 const adminAuth = basicAuth({
   users: { 
     'admin': process.env.ADMIN_PASSWORD || 'changeme123' 
@@ -795,11 +837,12 @@ app.get("/admin", (req, res) => {
                                                         <th>Email</th>
                                                         <th>Type</th>
                                                         <th>Service</th>
+                                                        <th>Message</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody id="recentSubmissions">
                                                     <tr>
-                                                        <td colspan="5" class="text-center">Loading...</td>
+                                                        <td colspan="6" class="text-center">Loading...</td>
                                                     </tr>
                                                 </tbody>
                                             </table>
@@ -949,16 +992,17 @@ app.get("/admin", (req, res) => {
                                                 <th>Date</th>
                                                 <th>Name</th>
                                                 <th>Email</th>
-                                                <th>Mobile</th>
+                                                <th>Phone</th>
                                                 <th>Age</th>
                                                 <th>Branch</th>
                                                 <th>Service</th>
                                                 <th>Appointment</th>
+                                                <th>Message</th>
                                             </tr>
                                         </thead>
                                         <tbody id="checkupSubmissions">
                                             <tr>
-                                                <td colspan="8" class="text-center">Loading submissions...</td>
+                                                <td colspan="9" class="text-center">Loading submissions...</td>
                                             </tr>
                                         </tbody>
                                     </table>
@@ -994,6 +1038,13 @@ app.get("/admin", (req, res) => {
         function formatAppointment(date, time) {
             if (!date) return '-';
             return \`\${date} \${time || ''}\`.trim();
+        }
+
+        // Truncate long text for display
+        function truncateText(text, maxLength = 50) {
+            if (!text) return '-';
+            if (text.length <= maxLength) return text;
+            return text.substring(0, maxLength) + '...';
         }
 
         // Dashboard functions
@@ -1040,7 +1091,7 @@ app.get("/admin", (req, res) => {
                 if (recentSubmissions.length === 0) {
                     recentSubmissionsTable.innerHTML = \`
                         <tr>
-                            <td colspan="5" class="text-center">No submissions found</td>
+                            <td colspan="6" class="text-center">No submissions found</td>
                         </tr>
                     \`;
                 } else {
@@ -1051,6 +1102,7 @@ app.get("/admin", (req, res) => {
                             <td>\${submission.email || '-'}</td>
                             <td><span class="badge \${submission.type === 'DENTAL' ? 'bg-primary' : 'bg-danger'}">\${submission.type}</span></td>
                             <td>\${submission.service || '-'}</td>
+                            <td>\${truncateText(submission.message, 30) || '-'}</td>
                         </tr>
                     \`).join('');
                 }
@@ -1058,7 +1110,7 @@ app.get("/admin", (req, res) => {
                 console.error('Error loading dashboard data:', error);
                 document.getElementById('recentSubmissions').innerHTML = \`
                     <tr>
-                        <td colspan="5" class="text-center text-danger">Error loading data. Please try again.</td>
+                        <td colspan="6" class="text-center text-danger">Error loading data. Please try again.</td>
                     </tr>
                 \`;
             }
@@ -1176,11 +1228,12 @@ app.get("/admin", (req, res) => {
                             <td>\${formatDate(submission.timestamp)}</td>
                             <td>\${submission.fullname || \`\${submission.firstname || ''} \${submission.lastname || ''}\`.trim() || '-'}</td>
                             <td>\${submission.email || '-'}</td>
-                            <td>\${submission.mobile || '-'}</td>
+                            <td>\${submission.phone || submission.mobile || '-'}</td>
                             <td>\${submission.age || '-'}</td>
                             <td>\${submission.branch || '-'}</td>
                             <td>\${submission.service || '-'}</td>
                             <td>\${formatAppointment(submission.appointmentdate, submission.appointmenttime)}</td>
+                            <td>\${truncateText(submission.message, 30) || '-'}</td>
                         </tr>
                     \`).join('');
                     
@@ -1224,7 +1277,7 @@ app.get("/admin", (req, res) => {
                 console.error('Error loading checkup submissions:', error);
                 document.getElementById('checkupSubmissions').innerHTML = \`
                     <tr>
-                        <td colspan="8" class="text-center text-danger">Error loading data. Please try again.</td>
+                        <td colspan="9" class="text-center text-danger">Error loading data. Please try again.</td>
                     </tr>
                 \`;
             } finally {
