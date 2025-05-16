@@ -55,26 +55,38 @@ const transporter = nodemailer.createTransport({
 // Google Sheets API Configuration
 const SCOPES = ['https://www.googleapis.com/auth/spreadsheets'];
 
-// IMPORTANT: Properly handle the private key for Render deployment
-// The key needs special handling because of how environment variables work in Render
+// FIXED: Private key handling (remove potential double encoding issues)
 function getPrivateKey() {
-  const key = process.env.GOOGLE_PRIVATE_KEY;
+  const rawKey = process.env.GOOGLE_PRIVATE_KEY;
   
-  // If the key already contains newlines, return it as is
-  if (key && key.includes('-----BEGIN PRIVATE KEY-----')) {
-    return key.replace(/\\n/g, '\n');
+  // Check if the key is already properly formatted with BEGIN/END markers
+  if (rawKey && rawKey.includes('-----BEGIN PRIVATE KEY-----')) {
+    return rawKey.replace(/\\n/g, '\n');
   }
   
-  // Otherwise, try to reconstruct it from the environment variable
-  // This handles cases where the key is stored without proper formatting
-  return `-----BEGIN PRIVATE KEY-----\n${key}\n-----END PRIVATE KEY-----`;
+  // If we have newlines already, just return the key
+  if (rawKey && rawKey.includes('\n')) {
+    return rawKey;
+  }
+  
+  // Try to fix a key that's been flattened (common issue in environment variables)
+  if (rawKey) {
+    return `-----BEGIN PRIVATE KEY-----\n${rawKey}\n-----END PRIVATE KEY-----`.replace(/\\n/g, '\n');
+  }
+  
+  console.error("No private key found in environment variables!");
+  return null;
 }
 
-// Try to use service account from secret file first, then fall back to env vars
+// Initialize Google API auth
 let auth;
+let sheets;
+
 try {
   const secretPath = '/etc/secrets/service-account.json';
+  
   if (fs.existsSync(secretPath)) {
+    console.log("Using service account from secret file");
     const credentials = JSON.parse(fs.readFileSync(secretPath, 'utf8'));
     auth = new google.auth.JWT(
       credentials.client_email,
@@ -82,33 +94,43 @@ try {
       credentials.private_key,
       SCOPES
     );
-    console.log("Using service account from secret file");
   } else {
-    // Fall back to environment variables
+    console.log("Using service account from environment variables");
+    
+    // FIXED: Log auth details for debugging (without exposing full key)
+    const privateKey = getPrivateKey();
+    const clientEmail = process.env.GOOGLE_CLIENT_EMAIL;
+    
+    console.log(`Client email: ${clientEmail}`);
+    console.log(`Private key available: ${privateKey ? 'Yes' : 'No'}`);
+    
+    if (!privateKey || !clientEmail) {
+      throw new Error("Missing Google API credentials");
+    }
+    
     auth = new google.auth.JWT(
-      process.env.GOOGLE_CLIENT_EMAIL,
+      clientEmail,
       null,
-      getPrivateKey(),
+      privateKey,
       SCOPES
     );
-    console.log("Using service account from environment variables");
   }
+  
+  // Create Google sheets instance
+  sheets = google.sheets({ version: 'v4', auth });
+  
 } catch (error) {
   console.error("Error setting up authentication:", error);
-  // Create a basic auth object anyway to avoid null references
-  auth = new google.auth.JWT(
-    process.env.GOOGLE_CLIENT_EMAIL,
-    null,
-    getPrivateKey(),
-    SCOPES
-  );
+  // Don't create a dummy auth object - better to fail fast
 }
 
-// Create Google sheets instance
-const sheets = google.sheets({ version: 'v4', auth });
-
-// Function to append data to Google Sheet - now handles both form types
+// FIXED: Better error handling for Google Sheets operations
 async function appendToSheet(data, formType) {
+  if (!sheets) {
+    console.error("Google Sheets API not initialized");
+    return false;
+  }
+  
   try {
     console.log("Attempting to append data to Google Sheet...");
     
@@ -158,21 +180,44 @@ async function appendToSheet(data, formType) {
       values,
     };
 
-    console.log(`Attempting to append to spreadsheet: ${process.env.SPREADSHEET_ID}`);
+    const spreadsheetId = process.env.SPREADSHEET_ID;
+    const sheetName = process.env.SHEET_NAME || "FormSubmissions";
     
-    // Append data to the sheet
-    const result = await sheets.spreadsheets.values.append({
-      spreadsheetId: process.env.SPREADSHEET_ID,
-      range: `${process.env.SHEET_NAME || "FormSubmissions"}!A:Q`, // Expanded range to include all columns
-      valueInputOption: 'RAW',
-      resource,
-    });
+    if (!spreadsheetId) {
+      throw new Error("SPREADSHEET_ID is not defined in environment variables");
+    }
+    
+    console.log(`Attempting to append to spreadsheet: ${spreadsheetId}, sheet: ${sheetName}`);
+    
+    // FIXED: More robust error handling for Google Sheets API calls
+    try {
+      const result = await sheets.spreadsheets.values.append({
+        spreadsheetId,
+        range: `${sheetName}!A:Q`,
+        valueInputOption: 'RAW',
+        resource,
+      });
 
-    console.log(`${result.data.updates.updatedCells} cells appended to Google Sheet`);
-    return true;
+      console.log(`${result.data.updates.updatedCells} cells appended to Google Sheet`);
+      return true;
+    } catch (apiError) {
+      // Log detailed error info from Google API
+      console.error("Google Sheets API error:", apiError.message);
+      
+      if (apiError.response && apiError.response.data) {
+        console.error("API Error Details:", apiError.response.data);
+      }
+      
+      // Check for common permission issues
+      if (apiError.message.includes("insufficient")) {
+        console.error("PERMISSION ERROR: The service account doesn't have permission to access this spreadsheet.");
+        console.error("Make sure to share the spreadsheet with the service account email:", process.env.GOOGLE_CLIENT_EMAIL);
+      }
+      
+      return false;
+    }
   } catch (error) {
-    console.error('Error appending data to Google Sheet:', error);
-    // Don't fail the whole request if sheet update fails
+    console.error('Error preparing data for Google Sheet:', error);
     return false;
   }
 }
@@ -346,12 +391,14 @@ app.post("/send-email", async (req, res) => {
     // Log any errors but don't fail the request if only one operation fails
     if (sheetResult.status === 'rejected') {
       console.error("Failed to save to Google Sheets:", sheetResult.reason);
+    } else if (sheetResult.value === false) {
+      console.error("Failed to save to Google Sheets - check previous logs for details");
     }
     
     if (emailResult.status === 'rejected') {
       console.error("Failed to send email:", emailResult.reason);
       // Only fail the request if both operations fail
-      if (sheetResult.status === 'rejected') {
+      if (sheetResult.status === 'rejected' || sheetResult.value === false) {
         throw new Error("Both email and sheet operations failed");
       }
     }
@@ -369,7 +416,9 @@ app.get("/health", (req, res) => {
     status: "ok",
     environment: process.env.NODE_ENV || 'development',
     googleAuth: auth ? "configured" : "not configured",
-    emailTransport: transporter ? "configured" : "not configured"
+    emailTransport: transporter ? "configured" : "not configured",
+    spreadsheetId: process.env.SPREADSHEET_ID || 'not configured',
+    sheetName: process.env.SHEET_NAME || 'FormSubmissions'
   });
 });
 
@@ -421,18 +470,47 @@ app.get("/test-sheets-connection", async (req, res) => {
   }
 });
 
+// FIXED: Add more diagnostic routes
+app.get("/check-google-auth", async (req, res) => {
+  try {
+    if (!auth) {
+      return res.status(500).json({
+        status: "error",
+        message: "Google auth not initialized"
+      });
+    }
+    
+    await auth.authorize();
+    res.status(200).json({
+      status: "success",
+      message: "Google authentication successful",
+      client_email: process.env.GOOGLE_CLIENT_EMAIL
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: "error",
+      message: "Google authentication failed",
+      error: error.message
+    });
+  }
+});
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   
   // Initialize Google Sheets connection
-  auth.authorize()
-    .then(() => {
-      console.log("✅ Successfully connected to Google Sheets API");
-    })
-    .catch((err) => {
-      console.error("❌ Error authenticating with Google:", err);
-    });
+  if (auth) {
+    auth.authorize()
+      .then(() => {
+        console.log("✅ Successfully connected to Google Sheets API");
+      })
+      .catch((err) => {
+        console.error("❌ Error authenticating with Google:", err);
+      });
+  } else {
+    console.error("❌ Google Auth was not initialized");
+  }
 });
 
 module.exports = app;
