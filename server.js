@@ -411,12 +411,14 @@ app.get("/admin", basicAuth, (req, res) => {
             color: white;
             min-height: 100vh;
             padding-top: 20px;
+            transition: all 0.3s;
         }
         
         .sidebar .nav-link {
             color: rgba(255, 255, 255, 0.8);
             border-radius: 0;
             margin-bottom: 5px;
+            padding: 10px 15px;
         }
         
         .sidebar .nav-link:hover,
@@ -500,15 +502,111 @@ app.get("/admin", basicAuth, (req, res) => {
             max-height: 400px;
             overflow-y: auto;
         }
+        
+        /* Mobile responsiveness improvements */
+        @media (max-width: 767.98px) {
+            .sidebar {
+                position: fixed;
+                top: 0;
+                left: -100%;
+                width: 80%;
+                z-index: 1050;
+                transition: left 0.3s ease;
+                height: 100%;
+                overflow-y: auto;
+            }
+            
+            .sidebar.show {
+                left: 0;
+            }
+            
+            .mobile-nav-toggle {
+                display: block !important;
+                position: fixed;
+                top: 10px;
+                left: 10px;
+                z-index: 1060;
+            }
+            
+            .main-content {
+                padding-top: 60px;
+            }
+            
+            .table-responsive {
+                font-size: 0.85rem;
+            }
+            
+            .card-body {
+                padding: 0.75rem;
+            }
+            
+            .dashboard-card h2 {
+                font-size: 1.5rem;
+            }
+            
+            .dashboard-card .icon {
+                font-size: 2rem;
+            }
+        }
+        
+        /* Overlay for mobile sidebar */
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 1040;
+        }
+        
+        /* Mobile header */
+        .mobile-header {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background-color: #2c3e50;
+            color: white;
+            padding: 10px 15px;
+            z-index: 1030;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        
+        @media (max-width: 767.98px) {
+            .mobile-header {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            
+            .mobile-header h4 {
+                margin: 0;
+                font-size: 1.2rem;
+            }
+        }
     </style>
 </head>
 <body>
+    <!-- Mobile Header -->
+    <div class="mobile-header">
+        <button class="btn btn-sm text-white mobile-nav-toggle" id="sidebarToggle">
+            <i class="bi bi-list fs-4"></i>
+        </button>
+        <h4>GoHealth Admin</h4>
+    </div>
+    
+    <!-- Sidebar Overlay -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+    
     <div class="container-fluid">
         <div class="row">
             <!-- Sidebar -->
-            <div class="col-md-3 col-lg-2 d-md-block sidebar collapse">
+            <div class="col-md-3 col-lg-2 d-md-block sidebar" id="sidebar">
                 <div class="position-sticky">
-                    <div class="text-center mb-4">
+                    <div class="text-center mb-4 d-none d-md-block">
                         <h4>GoHealth Admin</h4>
                     </div>
                     <ul class="nav flex-column">
@@ -646,7 +744,7 @@ app.get("/admin", basicAuth, (req, res) => {
                                             <input type="text" class="form-control" id="dentalSearch" placeholder="Search submissions...">
                                         </div>
                                     </div>
-                                    <div class="col-md-3">
+                                    <div class="col-md-3 col-6">
                                         <select class="form-select" id="dentalSortBy">
                                             <option value="timestamp">Sort by Date</option>
                                             <option value="name">Sort by Name</option>
@@ -654,7 +752,7 @@ app.get("/admin", basicAuth, (req, res) => {
                                             <option value="service">Sort by Service</option>
                                         </select>
                                     </div>
-                                    <div class="col-md-3">
+                                    <div class="col-md-3 col-6">
                                         <select class="form-select" id="dentalSortOrder">
                                             <option value="desc">Newest First</option>
                                             <option value="asc">Oldest First</option>
@@ -730,7 +828,7 @@ app.get("/admin", basicAuth, (req, res) => {
                                             <input type="text" class="form-control" id="checkupSearch" placeholder="Search submissions...">
                                         </div>
                                     </div>
-                                    <div class="col-md-3">
+                                    <div class="col-md-3 col-6">
                                         <select class="form-select" id="checkupSortBy">
                                             <option value="timestamp">Sort by Date</option>
                                             <option value="fullname">Sort by Name</option>
@@ -738,7 +836,7 @@ app.get("/admin", basicAuth, (req, res) => {
                                             <option value="service">Sort by Service</option>
                                         </select>
                                     </div>
-                                    <div class="col-md-3">
+                                    <div class="col-md-3 col-6">
                                         <select class="form-select" id="checkupSortOrder">
                                             <option value="desc">Newest First</option>
                                             <option value="asc">Oldest First</option>
@@ -840,6 +938,20 @@ app.get("/admin", basicAuth, (req, res) => {
             
             const modal = new bootstrap.Modal(document.getElementById('messageModal'));
             modal.show();
+        }
+
+        // Mobile sidebar toggle
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebarOverlay');
+            
+            sidebar.classList.toggle('show');
+            
+            if (sidebar.classList.contains('show')) {
+                overlay.style.display = 'block';
+            } else {
+                overlay.style.display = 'none';
+            }
         }
 
         // Dashboard functions
@@ -1109,6 +1221,19 @@ app.get("/admin", basicAuth, (req, res) => {
 
         // Event listeners
         document.addEventListener('DOMContentLoaded', function() {
+            // Mobile sidebar toggle
+            document.getElementById('sidebarToggle').addEventListener('click', toggleSidebar);
+            document.getElementById('sidebarOverlay').addEventListener('click', toggleSidebar);
+            
+            // Close sidebar when clicking a nav link on mobile
+            document.querySelectorAll('.sidebar .nav-link').forEach(link => {
+                link.addEventListener('click', function() {
+                    if (window.innerWidth < 768) {
+                        toggleSidebar();
+                    }
+                });
+            });
+            
             // Load dashboard data
             loadDashboardData();
             
