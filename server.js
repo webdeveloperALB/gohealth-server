@@ -6,43 +6,24 @@ const axios = require("axios");
 const fs = require("fs");
 const path = require("path");
 const { createObjectCsvWriter } = require("csv-writer");
-const moment = require("moment");
 
 // Load environment variables
 dotenv.config();
 
 const app = express();
 
-// Improved CORS configuration
-const allowedOrigins = [
-  "https://lp.gohealthalbania.com",
-  "http://localhost:3000",
-  // Add any other domains that need access
-];
-
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      // Allow requests with no origin (like mobile apps or curl requests)
-      if (!origin) return callback(null, true);
-
-      if (allowedOrigins.indexOf(origin) !== -1) {
-        callback(null, true);
-      } else {
-        callback(new Error("Not allowed by CORS"));
-      }
-    },
-    methods: ["GET", "POST", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-    credentials: true,
-    preflightContinue: false,
-    optionsSuccessStatus: 204,
-  })
-);
+// CORS configuration
+app.use(cors({
+  origin: ["https://lp.gohealthalbania.com", "http://localhost:3000"],
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: true
+}));
 
 // Handle OPTIONS requests
 app.options("*", cors());
 
+// Parse JSON bodies
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -67,65 +48,105 @@ if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
-// Improved CSV Writers for both form types with better formatting
-const dentalCsvWriter = createObjectCsvWriter({
-  path: DENTAL_CSV_PATH,
-  header: [
-    { id: 'id', title: 'ID' },
-    { id: 'timestamp', title: 'Timestamp' },
-    { id: 'formattedDate', title: 'Date' },
-    { id: 'name', title: 'Name' },
-    { id: 'email', title: 'Email' },
-    { id: 'phone', title: 'Phone' },
-    { id: 'department', title: 'Department' },
-    { id: 'treatment', title: 'Treatment' },
-    { id: 'service', title: 'Service' },
-    { id: 'appointmentDate', title: 'Appointment Date' },
-    { id: 'appointmentTime', title: 'Appointment Time' }
-  ],
-  append: true // Append to existing file
-});
+// Initialize CSV files if they don't exist
+function initializeCsvFiles() {
+  // Dental CSV
+  if (!fs.existsSync(DENTAL_CSV_PATH)) {
+    const headers = "ID,Timestamp,Name,Email,Phone,Department,Treatment,Service,AppointmentDate,AppointmentTime\n";
+    fs.writeFileSync(DENTAL_CSV_PATH, headers);
+    console.log("Created dental submissions CSV file");
+  }
 
-const checkupCsvWriter = createObjectCsvWriter({
-  path: CHECKUP_CSV_PATH,
-  header: [
-    { id: 'id', title: 'ID' },
-    { id: 'timestamp', title: 'Timestamp' },
-    { id: 'formattedDate', title: 'Date' },
-    { id: 'fullName', title: 'Full Name' },
-    { id: 'firstName', title: 'First Name' },
-    { id: 'lastName', title: 'Last Name' },
-    { id: 'email', title: 'Email' },
-    { id: 'mobile', title: 'Mobile' },
-    { id: 'phone', title: 'Phone' },
-    { id: 'age', title: 'Age' },
-    { id: 'address', title: 'Address' },
-    { id: 'branch', title: 'Branch' },
-    { id: 'service', title: 'Service' },
-    { id: 'appointmentDate', title: 'Appointment Date' },
-    { id: 'appointmentTime', title: 'Appointment Time' },
-    { id: 'message', title: 'Message' }
-  ],
-  append: true // Append to existing file
-});
+  // Checkup CSV
+  if (!fs.existsSync(CHECKUP_CSV_PATH)) {
+    const headers = "ID,Timestamp,FullName,FirstName,LastName,Email,Mobile,Phone,Age,Address,Branch,Service,AppointmentDate,AppointmentTime,Message\n";
+    fs.writeFileSync(CHECKUP_CSV_PATH, headers);
+    console.log("Created checkup submissions CSV file");
+  }
+}
+
+initializeCsvFiles();
 
 // Function to generate a unique ID
 function generateId() {
   return Math.random().toString(36).substring(2, 10).toUpperCase();
 }
 
-// Function to read existing CSV data
-function readCsvData(filePath) {
+// Function to format date for CSV
+function formatDate(date) {
+  if (!date) return "";
+  const d = new Date(date);
+  return d.toISOString().split('T')[0]; // YYYY-MM-DD
+}
+
+// Function to format time for CSV
+function formatTime(time) {
+  if (!time) return "";
+  const t = new Date(time);
+  return t.toTimeString().split(' ')[0].substring(0, 5); // HH:MM
+}
+
+// Function to save dental form data to CSV
+function saveDentalToCSV(formData) {
+  const id = generateId();
+  const timestamp = new Date().toISOString();
+  
+  const csvLine = [
+    id,
+    timestamp,
+    formData.name || "",
+    formData.email || "",
+    formData.phone || "",
+    formData.department || "",
+    formData.treatment || "",
+    formData.service || "",
+    formatDate(formData.date),
+    formatTime(formData.time)
+  ].map(field => `"${String(field).replace(/"/g, '""')}"`).join(",") + "\n";
+  
+  fs.appendFileSync(DENTAL_CSV_PATH, csvLine);
+  console.log(`Dental submission saved with ID: ${id}`);
+  return id;
+}
+
+// Function to save checkup form data to CSV
+function saveCheckupToCSV(formData) {
+  const id = generateId();
+  const timestamp = new Date().toISOString();
+  const fullName = `${formData.firstName || ""} ${formData.lastName || ""}`.trim();
+  
+  const csvLine = [
+    id,
+    timestamp,
+    fullName,
+    formData.firstName || "",
+    formData.lastName || "",
+    formData.email || "",
+    formData.mobile || "",
+    formData.phone || "",
+    formData.age || "",
+    formData.address || "",
+    formData.branch || "",
+    formData.service || "",
+    formatDate(formData.selectedDate),
+    formatTime(formData.selectedTime),
+    formData.message || ""
+  ].map(field => `"${String(field).replace(/"/g, '""')}"`).join(",") + "\n";
+  
+  fs.appendFileSync(CHECKUP_CSV_PATH, csvLine);
+  console.log(`Checkup submission saved with ID: ${id}`);
+  return id;
+}
+
+// Function to read CSV data
+function readCSV(filePath) {
   if (!fs.existsSync(filePath)) {
     return [];
   }
   
-  const fileContent = fs.readFileSync(filePath, 'utf8');
-  if (!fileContent.trim()) {
-    return [];
-  }
+  const content = fs.readFileSync(filePath, 'utf8');
+  const lines = content.trim().split('\n');
   
-  const lines = fileContent.trim().split('\n');
   if (lines.length <= 1) {
     return [];
   }
@@ -133,101 +154,51 @@ function readCsvData(filePath) {
   const headers = lines[0].split(',').map(h => h.trim().replace(/^"(.*)"$/, '$1'));
   
   return lines.slice(1).map(line => {
-    const values = line.split(',').map(v => v.trim().replace(/^"(.*)"$/, '$1'));
-    const record = {};
+    // Handle commas within quoted fields
+    const values = [];
+    let inQuotes = false;
+    let currentValue = '';
     
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      
+      if (char === '"' && (i === 0 || line[i-1] !== '\\')) {
+        inQuotes = !inQuotes;
+      } else if (char === ',' && !inQuotes) {
+        values.push(currentValue.replace(/^"(.*)"$/, '$1'));
+        currentValue = '';
+      } else {
+        currentValue += char;
+      }
+    }
+    
+    values.push(currentValue.replace(/^"(.*)"$/, '$1'));
+    
+    const record = {};
     headers.forEach((header, index) => {
-      record[header.toLowerCase().replace(/\s+/g, '')] = values[index] || '';
+      record[header.toLowerCase()] = values[index] || '';
     });
     
     return record;
   });
 }
 
-// Enhanced function to save form data to CSV with better formatting
-async function saveToCSV(formData, formType) {
-  try {
-    const now = new Date();
-    const timestamp = now.toISOString();
-    const formattedDate = moment(now).format('YYYY-MM-DD HH:mm:ss');
-    
-    // Generate a unique ID for this submission
-    const id = generateId();
-    
-    // Format the data better for CSV
-    let enhancedData = {
-      id,
-      timestamp,
-      formattedDate
-    };
-    
-    if (formType === "DENTAL") {
-      enhancedData = {
-        ...enhancedData,
-        name: formData.name || '',
-        email: formData.email || '',
-        phone: formData.phone || '',
-        department: formData.department || '',
-        treatment: formData.treatment || '',
-        service: formData.service || '',
-        appointmentDate: formData.date ? moment(formData.date).format('YYYY-MM-DD') : '',
-        appointmentTime: formData.time ? moment(formData.time, 'HH:mm').format('HH:mm') : ''
-      };
-    } else {
-      // For CHECKUP form
-      const fullName = `${formData.firstName || ''} ${formData.lastName || ''}`.trim();
-      enhancedData = {
-        ...enhancedData,
-        fullName,
-        firstName: formData.firstName || '',
-        lastName: formData.lastName || '',
-        email: formData.email || '',
-        mobile: formData.mobile || '',
-        phone: formData.phone || '', // Added phone field
-        age: formData.age || '',
-        address: formData.address || '',
-        branch: formData.branch || '',
-        service: formData.service || '',
-        appointmentDate: formData.selectedDate ? moment(formData.selectedDate).format('YYYY-MM-DD') : '',
-        appointmentTime: formData.selectedTime ? moment(formData.selectedTime, 'HH:mm').format('HH:mm') : '',
-        message: formData.message || '' // Ensure message is properly saved
-      };
-    }
-    
-    // Choose the appropriate CSV writer based on form type
-    const csvWriter = formType === "DENTAL" ? dentalCsvWriter : checkupCsvWriter;
-    
-    // Write to CSV
-    await csvWriter.writeRecords([enhancedData]);
-    console.log(`Data saved to CSV for ${formType} form with ID: ${id}`);
-    return true;
-  } catch (error) {
-    console.error(`Error saving to CSV for ${formType} form:`, error);
-    return false;
-  }
-}
-
-// Improved reCAPTCHA verification function with better error handling
+// reCAPTCHA verification
 async function verifyCaptcha(token) {
+  if (!token) return false;
+  
   try {
-    // Form data for reCAPTCHA verification
     const params = new URLSearchParams();
     params.append("secret", process.env.RECAPTCHA_SECRET_KEY);
     params.append("response", token);
 
-    const response = await axios.post("https://www.google.com/recaptcha/api/siteverify", params.toString(), {
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-    });
+    const response = await axios.post(
+      "https://www.google.com/recaptcha/api/siteverify", 
+      params.toString(),
+      { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
+    );
 
-    if (response.data.success) {
-      console.log("reCAPTCHA verification successful");
-      return true;
-    } else {
-      console.error("reCAPTCHA verification failed:", response.data["error-codes"]);
-      return false;
-    }
+    return response.data.success;
   } catch (error) {
     console.error("reCAPTCHA verification error:", error.message);
     return false;
@@ -237,150 +208,80 @@ async function verifyCaptcha(token) {
 // Unified endpoint for both forms
 app.post("/send-email", async (req, res) => {
   try {
-    console.log("Received form submission");
+    console.log("Received form submission:", req.body);
 
-    // Extract all possible fields from both forms
-    const {
-      // Common fields
-      email,
-      service,
-      recaptchaToken,
-      website = "", // Honeypot field
+    // Extract common fields
+    const { email, service, recaptchaToken, website = "" } = req.body;
 
-      // Dental form specific fields
-      name,
-      phone,
-      date,
-      time,
-      department = "",
-      treatment = "",
-
-      // Checkup form specific fields
-      firstName = "",
-      lastName = "",
-      age = "",
-      mobile = "",
-      address = "",
-      branch = "",
-      message = "", // Ensure message is extracted
-      selectedDate,
-      selectedTime,
-    } = req.body;
-
-    // Check honeypot - if filled, silently return success but don't send email
+    // Check honeypot
     if (website !== "") {
-      console.log("Spam submission detected via honeypot! Request blocked.");
-      // Return 200 to fool the bot into thinking submission was successful
+      console.log("Spam submission detected via honeypot!");
       return res.status(200).json({ message: "Email inviata con successo!" });
     }
 
     // Verify reCAPTCHA
-    if (!recaptchaToken) {
-      return res.status(400).json({ message: "reCAPTCHA token is required" });
-    }
-
     const isCaptchaValid = await verifyCaptcha(recaptchaToken);
     if (!isCaptchaValid) {
+      console.log("reCAPTCHA verification failed");
       return res.status(400).json({ message: "reCAPTCHA verification failed. Please try again." });
     }
 
-    // Determine which form was submitted
-    // If firstName or lastName is present, it's likely the checkup form
-    // If department or treatment is present, it's likely the dental form
-    const formType = firstName || lastName ? "CHECKUP" : "DENTAL";
+    // Determine form type
+    const formType = req.body.firstName || req.body.lastName ? "CHECKUP" : "DENTAL";
     console.log(`Form type detected: ${formType}`);
 
-    // Format date and time based on which form fields are present
-    const formattedDate = date || selectedDate ? new Date(date || selectedDate).toLocaleDateString("it-IT") : "";
-
-    const formattedTime =
-      time || selectedTime
-        ? new Date(time || selectedTime).toLocaleTimeString("it-IT", {
-            hour: "2-digit",
-            minute: "2-digit",
-          })
-        : "";
-
-    // Determine the full name based on available fields
+    // Prepare email content
     let fullName = "";
-    if (name) {
-      fullName = name;
-    } else if (firstName || lastName) {
-      fullName = `${firstName || ""} ${lastName || ""}`.trim();
+    let formattedDate = "";
+    let formattedTime = "";
+    
+    if (formType === "DENTAL") {
+      fullName = req.body.name || "";
+      formattedDate = req.body.date ? new Date(req.body.date).toLocaleDateString("it-IT") : "";
+      formattedTime = req.body.time ? new Date(req.body.time).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }) : "";
+    } else {
+      fullName = `${req.body.firstName || ""} ${req.body.lastName || ""}`.trim();
+      formattedDate = req.body.selectedDate ? new Date(req.body.selectedDate).toLocaleDateString("it-IT") : "";
+      formattedTime = req.body.selectedTime ? new Date(req.body.selectedTime).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }) : "";
     }
 
-    // Contact information handling - unified for both forms
+    // Email content
     const mailOptions = {
       from: `"Website Form" <${process.env.EMAIL_USER}>`,
       to: "clinic@gohealthalbania.com",
       subject: `Nuova Prenotazione - ${formType}`,
       html: `
         <h3>Nuova Prenotazione - ${formType}</h3>
-        ${department ? `<p><strong>Reparto:</strong> ${department}</p>` : ""}
-        ${treatment ? `<p><strong>Trattamento:</strong> ${treatment}</p>` : ""}
+        ${req.body.department ? `<p><strong>Reparto:</strong> ${req.body.department}</p>` : ""}
+        ${req.body.treatment ? `<p><strong>Trattamento:</strong> ${req.body.treatment}</p>` : ""}
         ${service ? `<p><strong>Servizio Richiesto:</strong> ${service}</p>` : ""}
         
         <p><strong>Nome:</strong> ${fullName}</p>
         
         ${email ? `<p><strong>Email:</strong> ${email}</p>` : ""}
-        ${phone ? `<p><strong>Telefono:</strong> ${phone}</p>` : ""}
-        ${mobile ? `<p><strong>Cellulare:</strong> ${mobile}</p>` : ""}
+        ${req.body.phone ? `<p><strong>Telefono:</strong> ${req.body.phone}</p>` : ""}
+        ${req.body.mobile ? `<p><strong>Cellulare:</strong> ${req.body.mobile}</p>` : ""}
         ${formattedDate ? `<p><strong>Data:</strong> ${formattedDate}</p>` : ""}
         ${formattedTime ? `<p><strong>Ora:</strong> ${formattedTime}</p>` : ""}
         
-        <!-- Additional fields -->
-        ${age ? `<p><strong>Età:</strong> ${age}</p>` : ""}
-        ${address ? `<p><strong>Indirizzo:</strong> ${address}</p>` : ""}
-        ${branch ? `<p><strong>Filiale:</strong> ${branch}</p>` : ""}
-        ${message ? `<p><strong>Messaggio:</strong> ${message}</p>` : ""}
+        ${req.body.age ? `<p><strong>Età:</strong> ${req.body.age}</p>` : ""}
+        ${req.body.address ? `<p><strong>Indirizzo:</strong> ${req.body.address}</p>` : ""}
+        ${req.body.branch ? `<p><strong>Filiale:</strong> ${req.body.branch}</p>` : ""}
+        ${req.body.message ? `<p><strong>Messaggio:</strong> ${req.body.message}</p>` : ""}
       `,
     };
 
-    // Prepare form data for CSV
-    const formData = formType === "DENTAL" ? {
-      name,
-      email,
-      phone,
-      department,
-      treatment,
-      service,
-      date,
-      time
-    } : {
-      firstName,
-      lastName,
-      email,
-      mobile,
-      phone, // Include phone field for checkup form
-      age,
-      address,
-      branch,
-      service,
-      selectedDate,
-      selectedTime,
-      message // Ensure message is included
-    };
-
-    console.log("Attempting to save data and send email...");
-
-    // Save to CSV and send email in parallel
-    const [csvResult, emailResult] = await Promise.allSettled([
-      saveToCSV(formData, formType),
-      transporter.sendMail(mailOptions)
-    ]);
-
-    // Log any errors but don't fail the request if only one operation fails
-    if (csvResult.status === "rejected" || csvResult.value === false) {
-      console.error("Failed to save to CSV:", csvResult.reason || "Check previous logs for details");
+    // Save to CSV and send email
+    let csvSaveResult;
+    if (formType === "DENTAL") {
+      csvSaveResult = saveDentalToCSV(req.body);
+    } else {
+      csvSaveResult = saveCheckupToCSV(req.body);
     }
 
-    if (emailResult.status === "rejected") {
-      console.error("Failed to send email:", emailResult.reason);
-      // Only fail the request if both operations fail
-      if (csvResult.status === "rejected" || csvResult.value === false) {
-        throw new Error("Both email and CSV operations failed");
-      }
-    }
+    // Send email
+    await transporter.sendMail(mailOptions);
+    console.log("Email sent successfully");
 
     res.status(200).json({ message: "Email inviata con successo!" });
   } catch (error) {
@@ -389,124 +290,41 @@ app.post("/send-email", async (req, res) => {
   }
 });
 
-// Health check endpoint
-app.get("/health", (req, res) => {
-  res.status(200).json({
-    status: "ok",
-    environment: process.env.NODE_ENV || "development",
-    emailTransport: transporter ? "configured" : "not configured",
-    csvStorage: {
-      dentalPath: DENTAL_CSV_PATH,
-      checkupPath: CHECKUP_CSV_PATH
-    }
-  });
-});
-
-// Basic authentication middleware for admin routes - using custom implementation instead of express-basic-auth
-function basicAuth(options) {
-  const users = options.users || {};
-  const challenge = options.challenge || false;
-  const realm = options.realm || 'Authentication Required';
-
-  return function(req, res, next) {
-    // Parse the Authorization header
-    const authHeader = req.headers.authorization;
-    
-    if (!authHeader) {
-      return unauthorized();
-    }
-    
-    // Get the encoded credentials
-    const match = authHeader.match(/^Basic\s+(.*)$/);
-    if (!match) {
-      return unauthorized();
-    }
-    
-    // Decode the credentials
-    const credentials = Buffer.from(match[1], 'base64').toString();
-    const [username, password] = credentials.split(':');
-    
-    // Check if the credentials are valid
-    if (users[username] && users[username] === password) {
-      return next();
-    }
-    
-    return unauthorized();
-    
-    function unauthorized() {
-      if (challenge) {
-        res.setHeader('WWW-Authenticate', `Basic realm="${realm}"`);
-      }
-      res.status(401).send('Unauthorized');
-    }
-  };
+// Basic authentication middleware
+function basicAuth(req, res, next) {
+  // Get auth header
+  const authHeader = req.headers.authorization;
+  
+  if (!authHeader) {
+    res.setHeader('WWW-Authenticate', 'Basic realm="Admin Area"');
+    return res.status(401).send('Authentication required');
+  }
+  
+  // Parse auth header
+  const auth = Buffer.from(authHeader.split(' ')[1], 'base64').toString().split(':');
+  const user = auth[0];
+  const pass = auth[1];
+  
+  // Check credentials
+  if (user === 'admin' && pass === (process.env.ADMIN_PASSWORD || 'changeme123')) {
+    return next();
+  }
+  
+  res.setHeader('WWW-Authenticate', 'Basic realm="Admin Area"');
+  return res.status(401).send('Authentication required');
 }
 
-// Admin authentication middleware
-const adminAuth = basicAuth({
-  users: { 
-    'admin': process.env.ADMIN_PASSWORD || 'changeme123' 
-  },
-  challenge: true,
-  realm: 'GoHealth Admin'
-});
-
-// Serve static files for the admin dashboard
-app.use('/admin/assets', express.static(path.join(__dirname, 'admin', 'assets')));
-
-// Admin dashboard routes
-app.use('/admin', adminAuth);
-
-// Endpoint to download CSV files
-app.get("/download-csv/:formType", adminAuth, (req, res) => {
-  try {
-    const { formType } = req.params;
-    
-    // Determine which CSV file to send
-    let csvPath;
-    if (formType.toUpperCase() === "DENTAL") {
-      csvPath = DENTAL_CSV_PATH;
-    } else if (formType.toUpperCase() === "CHECKUP") {
-      csvPath = CHECKUP_CSV_PATH;
-    } else {
-      return res.status(400).json({ message: "Invalid form type. Use 'dental' or 'checkup'." });
-    }
-    
-    // Check if file exists
-    if (!fs.existsSync(csvPath)) {
-      return res.status(404).json({ message: `No ${formType} submissions found.` });
-    }
-    
-    // Send the file
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename=${formType.toLowerCase()}_submissions.csv`);
-    
-    const fileStream = fs.createReadStream(csvPath);
-    fileStream.pipe(res);
-  } catch (error) {
-    console.error("Error downloading CSV:", error);
-    res.status(500).json({ message: "Error downloading CSV file" });
-  }
-});
-
-// API endpoint to get submissions data
-app.get("/admin/api/submissions/:formType", adminAuth, (req, res) => {
+// API endpoints for admin dashboard
+app.get("/admin/api/submissions/:formType", basicAuth, (req, res) => {
   try {
     const { formType } = req.params;
     const { search, page = 1, limit = 10, sortBy = 'timestamp', sortOrder = 'desc' } = req.query;
     
     // Determine which CSV file to read
-    let csvPath;
-    if (formType.toUpperCase() === "DENTAL") {
-      csvPath = DENTAL_CSV_PATH;
-    } else if (formType.toUpperCase() === "CHECKUP") {
-      csvPath = CHECKUP_CSV_PATH;
-    } else {
-      return res.status(400).json({ message: "Invalid form type. Use 'dental' or 'checkup'." });
-    }
+    const csvPath = formType.toLowerCase() === "dental" ? DENTAL_CSV_PATH : CHECKUP_CSV_PATH;
     
     // Read CSV data
-    let submissions = readCsvData(csvPath);
+    let submissions = readCSV(csvPath);
     
     // Apply search filter if provided
     if (search) {
@@ -550,8 +368,29 @@ app.get("/admin/api/submissions/:formType", adminAuth, (req, res) => {
   }
 });
 
-// Admin dashboard main page
-app.get("/admin", (req, res) => {
+// Download CSV endpoint
+app.get("/download-csv/:formType", basicAuth, (req, res) => {
+  try {
+    const { formType } = req.params;
+    const csvPath = formType.toLowerCase() === "dental" ? DENTAL_CSV_PATH : CHECKUP_CSV_PATH;
+    
+    if (!fs.existsSync(csvPath)) {
+      return res.status(404).json({ message: `No ${formType} submissions found` });
+    }
+    
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename=${formType.toLowerCase()}_submissions.csv`);
+    
+    const fileStream = fs.createReadStream(csvPath);
+    fileStream.pipe(res);
+  } catch (error) {
+    console.error("Error downloading CSV:", error);
+    res.status(500).json({ message: "Error downloading CSV file" });
+  }
+});
+
+// Admin dashboard HTML
+app.get("/admin", basicAuth, (req, res) => {
   const adminHtml = `
 <!DOCTYPE html>
 <html lang="en">
@@ -562,22 +401,13 @@ app.get("/admin", (req, res) => {
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     <style>
-        :root {
-            --primary-color: #2c3e50;
-            --secondary-color: #3498db;
-            --accent-color: #e74c3c;
-            --light-color: #ecf0f1;
-            --dark-color: #2c3e50;
-        }
-        
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background-color: #f8f9fa;
-            color: #333;
         }
         
         .sidebar {
-            background-color: var(--primary-color);
+            background-color: #2c3e50;
             color: white;
             min-height: 100vh;
             padding-top: 20px;
@@ -610,57 +440,6 @@ app.get("/admin", (req, res) => {
             border: none;
         }
         
-        .card-header {
-            background-color: white;
-            border-bottom: 1px solid #eee;
-            font-weight: 600;
-            padding: 15px 20px;
-        }
-        
-        .table th {
-            font-weight: 600;
-            color: var(--dark-color);
-        }
-        
-        .btn-primary {
-            background-color: var(--secondary-color);
-            border-color: var(--secondary-color);
-        }
-        
-        .btn-primary:hover {
-            background-color: #2980b9;
-            border-color: #2980b9;
-        }
-        
-        .btn-danger {
-            background-color: var(--accent-color);
-            border-color: var(--accent-color);
-        }
-        
-        .pagination .page-link {
-            color: var(--secondary-color);
-        }
-        
-        .pagination .page-item.active .page-link {
-            background-color: var(--secondary-color);
-            border-color: var(--secondary-color);
-        }
-        
-        .search-box {
-            position: relative;
-        }
-        
-        .search-box i {
-            position: absolute;
-            left: 10px;
-            top: 10px;
-            color: #aaa;
-        }
-        
-        .search-box input {
-            padding-left: 35px;
-        }
-        
         .dashboard-card {
             border-left: 4px solid;
             transition: transform 0.2s;
@@ -671,15 +450,11 @@ app.get("/admin", (req, res) => {
         }
         
         .dashboard-card.dental {
-            border-left-color: var(--secondary-color);
+            border-left-color: #3498db;
         }
         
         .dashboard-card.checkup {
-            border-left-color: var(--accent-color);
-        }
-        
-        .dashboard-card .card-body {
-            padding: 20px;
+            border-left-color: #e74c3c;
         }
         
         .dashboard-card .icon {
@@ -688,22 +463,11 @@ app.get("/admin", (req, res) => {
         }
         
         .dashboard-card.dental .icon {
-            color: var(--secondary-color);
+            color: #3498db;
         }
         
         .dashboard-card.checkup .icon {
-            color: var(--accent-color);
-        }
-        
-        .dashboard-card h2 {
-            font-size: 2rem;
-            font-weight: 700;
-            margin-bottom: 0;
-        }
-        
-        .dashboard-card p {
-            color: #6c757d;
-            margin-bottom: 0;
+            color: #e74c3c;
         }
         
         .loading-spinner {
@@ -724,10 +488,17 @@ app.get("/admin", (req, res) => {
             opacity: 0.5;
         }
         
-        @media (max-width: 768px) {
-            .sidebar {
-                min-height: auto;
-            }
+        .message-cell {
+            max-width: 200px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .message-modal .modal-body {
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
         }
     </style>
 </head>
@@ -962,7 +733,7 @@ app.get("/admin", (req, res) => {
                                     <div class="col-md-3">
                                         <select class="form-select" id="checkupSortBy">
                                             <option value="timestamp">Sort by Date</option>
-                                            <option value="fullName">Sort by Name</option>
+                                            <option value="fullname">Sort by Name</option>
                                             <option value="email">Sort by Email</option>
                                             <option value="service">Sort by Service</option>
                                         </select>
@@ -1026,6 +797,23 @@ app.get("/admin", (req, res) => {
         </div>
     </div>
 
+    <!-- Message Modal -->
+    <div class="modal fade message-modal" id="messageModal" tabindex="-1" aria-labelledby="messageModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="messageModalLabel">Message</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="messageModalBody">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         // Utility functions
@@ -1040,16 +828,26 @@ app.get("/admin", (req, res) => {
             return \`\${date} \${time || ''}\`.trim();
         }
 
-        // Truncate long text for display
         function truncateText(text, maxLength = 50) {
             if (!text) return '-';
             if (text.length <= maxLength) return text;
             return text.substring(0, maxLength) + '...';
         }
 
+        function showMessage(message) {
+            const modalBody = document.getElementById('messageModalBody');
+            modalBody.textContent = message || 'No message provided';
+            
+            const modal = new bootstrap.Modal(document.getElementById('messageModal'));
+            modal.show();
+        }
+
         // Dashboard functions
         async function loadDashboardData() {
             try {
+                document.getElementById('dentalCount').textContent = '...';
+                document.getElementById('checkupCount').textContent = '...';
+                
                 // Load counts
                 const [dentalResponse, checkupResponse] = await Promise.all([
                     fetch('/admin/api/submissions/dental'),
@@ -1077,7 +875,7 @@ app.get("/admin", (req, res) => {
                     recentSubmissions = [...recentSubmissions, ...checkupData.data.map(item => ({
                         ...item,
                         type: 'CHECKUP',
-                        displayName: item.fullname || \`\${item.firstname || ''} \${item.lastname || ''}\`.trim()
+                        displayName: item.fullname
                     }))];
                 }
                 
@@ -1102,9 +900,21 @@ app.get("/admin", (req, res) => {
                             <td>\${submission.email || '-'}</td>
                             <td><span class="badge \${submission.type === 'DENTAL' ? 'bg-primary' : 'bg-danger'}">\${submission.type}</span></td>
                             <td>\${submission.service || '-'}</td>
-                            <td>\${truncateText(submission.message, 30) || '-'}</td>
+                            <td class="message-cell">
+                                \${submission.message ? 
+                                    \`<a href="#" class="view-message" data-message="\${submission.message}">\${truncateText(submission.message, 30)}</a>\` : 
+                                    '-'}
+                            </td>
                         </tr>
                     \`).join('');
+                    
+                    // Add event listeners to message links
+                    document.querySelectorAll('#recentSubmissions .view-message').forEach(link => {
+                        link.addEventListener('click', function(e) {
+                            e.preventDefault();
+                            showMessage(this.getAttribute('data-message'));
+                        });
+                    });
                 }
             } catch (error) {
                 console.error('Error loading dashboard data:', error);
@@ -1226,16 +1036,28 @@ app.get("/admin", (req, res) => {
                     submissionsTable.innerHTML = data.data.map(submission => \`
                         <tr>
                             <td>\${formatDate(submission.timestamp)}</td>
-                            <td>\${submission.fullname || \`\${submission.firstname || ''} \${submission.lastname || ''}\`.trim() || '-'}</td>
+                            <td>\${submission.fullname || '-'}</td>
                             <td>\${submission.email || '-'}</td>
                             <td>\${submission.phone || submission.mobile || '-'}</td>
                             <td>\${submission.age || '-'}</td>
                             <td>\${submission.branch || '-'}</td>
                             <td>\${submission.service || '-'}</td>
                             <td>\${formatAppointment(submission.appointmentdate, submission.appointmenttime)}</td>
-                            <td>\${truncateText(submission.message, 30) || '-'}</td>
+                            <td class="message-cell">
+                                \${submission.message ? 
+                                    \`<a href="#" class="view-message" data-message="\${submission.message}">\${truncateText(submission.message, 30)}</a>\` : 
+                                    '-'}
+                            </td>
                         </tr>
                     \`).join('');
+                    
+                    // Add event listeners to message links
+                    document.querySelectorAll('#checkupSubmissions .view-message').forEach(link => {
+                        link.addEventListener('click', function(e) {
+                            e.preventDefault();
+                            showMessage(this.getAttribute('data-message'));
+                        });
+                    });
                     
                     // Update pagination
                     const pagination = document.getElementById('checkupPagination');
@@ -1352,6 +1174,19 @@ app.get("/admin", (req, res) => {
   res.send(adminHtml);
 });
 
+// Health check endpoint
+app.get("/health", (req, res) => {
+  res.status(200).json({
+    status: "ok",
+    environment: process.env.NODE_ENV || "development",
+    emailTransport: transporter ? "configured" : "not configured",
+    csvStorage: {
+      dentalPath: DENTAL_CSV_PATH,
+      checkupPath: CHECKUP_CSV_PATH
+    }
+  });
+});
+
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
@@ -1361,8 +1196,3 @@ app.listen(PORT, () => {
 });
 
 module.exports = app;
-
-// Test the server
-console.log("Enhanced server configured with CSV storage and admin dashboard");
-console.log(`Dental form submissions will be saved to: ${DENTAL_CSV_PATH}`);
-console.log(`Checkup form submissions will be saved to: ${CHECKUP_CSV_PATH}`);
