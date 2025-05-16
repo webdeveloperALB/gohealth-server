@@ -523,7 +523,6 @@ app.get("/admin", basicAuth, (req, res) => {
             .mobile-nav-toggle {
                 display: block !important;
                 position: fixed;
-                top: 10px;
                 left: 10px;
                 z-index: 1060;
             }
