@@ -32,7 +32,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Email transporter configuration
-const transporter = nodemailer.createTransporter({
+const transporter = nodemailer.createTransport({
   host: "gohealthalbania.com",
   port: 465,
   secure: true,
