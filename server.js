@@ -1566,7 +1566,7 @@ app.get("/admin", basicAuth, (req, res) => {
 });
 app.get("/", (req, res) => {
   res.send(
-    "Welcome to the GoHealth API. Visit /admin for the dashboard or /health for status."
+    "Welcome to the GoHealth API. Visit /admin for the dashboard"
   );
 });
 
