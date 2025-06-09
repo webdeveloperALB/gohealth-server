@@ -1565,6 +1565,10 @@ app.get("/admin", basicAuth, (req, res) => {
   `);
 });
 
+app.get("/", (req, res) => {
+  res.send("Welcome to the GoHealth API!");
+});
+
 // Health check endpoint
 app.get("/health", (req, res) => {
   res.status(200).json({
